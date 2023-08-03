@@ -1,54 +1,61 @@
-//generate a web server
+//create a web server and listen for incoming requests
+//create a route to handle incoming requests
+const express = require('express');
+const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const authenticate = require('../authenticate');
+const cors = require('./cors');
+const Comments = require('../models/comments');
+const Dishes = require('../models/dishes');
 
-var express = require('express');
-var router = express.Router();
+const commentRouter = express.Router();
+commentRouter.use(bodyParser.json());
 
-//get the comments model
-var Comments = require('../models/comments');
-
-// GET handler for /comments
-router.get('/', function(req, res, next) {
-  //use the comments model to query the db for comment data
-  Comments.find(function(err, comments){
-    if (err) {
-      console.log(err);
-      res.end(err);
+commentRouter.route('/')
+.options(cors.corsWithOptions, (req, res) => {res.sendStatus(200); })
+.get(cors.cors, (req,res,next) => {
+    Comments.find(req.query)
+    .populate('author')
+    .then((comments) => {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.json(comments); //send the json data to the client in the response body
+    }, (err) => next(err))
+    .catch((err) => next(err));
+})
+.post(cors.corsWithOptions, authenticate.verifyUser,  authenticate.verifyAdmin, (req,res,next) => {
+    if (req.body != null) {
+        Comments.create(req.body)
+        .then((comment) => {
+            Comments.findById(comment._id)
+            .populate('author')
+            .then((comment) => {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.json(comment); //send the json data to the client in the response body
+            })
+        }, (err) => next(err))
+        .catch((err) => next(err));
     }
     else {
-      //load the comments view
-      res.render('comments', {
-        title: 'Comments',
-        comments: comments
-      });
+        err = new Error('Comment not found in request body');
+        err.status = 404;
+        return next(err);
     }
-  });
+})
+.put(cors.corsWithOptions, authenticate.verifyUser,  authenticate.verifyAdmin, (req,res,next) => {
+    res.statusCode = 403;
+    res.end('PUT operation not supported on /comments');
+})
+.delete(cors.corsWithOptions, authenticate.verifyUser,  authenticate.verifyAdmin, (req,res,next) => {
+    Comments.remove({})
+    .then((resp) => {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.json(resp); //send the json data to the client in the response body
+    }, (err) => next(err))
+    .catch((err) => next(err));
 });
 
-// GET handler for /comments/add
-router.get('/add', function(req, res, next) {
-  //load the blank comment form
-  res.render('add-comment', {
-    title: 'Add a New Comment'
-  });
-});
-
-// POST handler for /comments/add
-router.post('/add', function(req, res, next) {
-  //use the comments model to add a new comment to mongodb
-  Comments.create( {
-    name: req.body.name,
-    comment: req.body.comment
-  }, function(err, Comments) {
-    if (err) {
-      console.log(err);
-      res.render('error');
-    }
-    else {
-      //redirect to the updated comments page
-      res.redirect('/comments');
-    }
-  });
-});
-
-//make this public
-module.exports = router;
+commentRouter.route('/:commentId')
+.options(cors.corsWithOptions, (req, res
